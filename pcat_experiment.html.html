@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>一対比較・回答信頼性評価ツール (データ永続保存＆日またぎ対応版)</title>
+<style>
+  body { font-family: sans-serif; max-width: 950px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; }
+  .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+  .hidden { display: none; }
+  .pair-container { display: flex; justify-content: space-around; align-items: center; margin-top: 20px; gap: 10px; }
+  .item-card { border: 3px solid #ccc; border-radius: 12px; padding: 15px; text-align: center; cursor: pointer; transition: transform 0.2s, border-color 0.2s; background: #fff; width: 40%; }
+  .item-card:hover { transform: scale(1.03); border-color: #ff6b6b; }
+  .item-card img { max-width: 100%; max-height: 220px; object-fit: contain; }
+  .item-card p { font-size: 1.2rem; font-weight: bold; margin-top: 10px; }
+  .draw-zone { text-align: center; width: 20%; }
+  .draw-btn { background: #ff9800; color: white; padding: 15px 10px; font-size: 1.1rem; border: none; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
+  .draw-btn:hover { background: #e68a00; }
+  button.action-btn { padding: 10px 20px; font-size: 1rem; background: #4caf50; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px; margin-bottom: 5px; }
+  button.action-btn:hover { background: #45a049; }
+  button.danger-btn { background: #f44336; }
+  button.danger-btn:hover { background: #da190b; }
+  input, select { padding: 8px; margin: 5px 0; font-size: 1rem; width: 100%; box-sizing: border-box; }
+  table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+  th { background-color: #f2f2f2; }
+  .rank-badge { font-weight: bold; font-size: 1.2rem; color: #d32f2f; }
+  .flex-grid { display: flex; gap: 20px; flex-wrap: wrap; }
+  .flex-col { flex: 1; min-width: 300px; }
+  .config-box { background: #fff3e0; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #ffe0b2; }
+</style>
+</head>
+<body onload="initApp()">
+
+<h1>🍬 一対比較・回答信頼性評価ツール</h1>
+
+<!-- 1. 被験者情報 ＆ 条件設定画面 -->
+<div id="setup-screen" class="card">
+  <h2>被験者情報 ＆ 実験設定</h2>
+
+  <div class="config-box">
+    <label><b>⚙️ 実験オプション設定:</b></label><br>
+    <label style="cursor: pointer;">
+      <input type="checkbox" id="enable-draw" checked style="width:auto;"> 「引き分け（同等）」ボタンを有効にする
+    </label>
+  </div>
+
+  <label>ペンネーム / ID (※テスト2から再開の場合も同じIDを入力):</label>
+  <input type="text" id="subject-id" placeholder="例: P001" oninput="checkExistingSubject()">
+  
+  <div id="re-test-notice" style="color: #d32f2f; font-weight: bold; margin: 5px 0; display: none;">
+    ℹ️ このIDは「テスト1」完了済みです。本日開始すると「テスト2」からのスタートになります。
+  </div>
+
+  <label>年齢:</label>
+  <input type="number" id="subject-age" placeholder="例: 25">
+  <label>性別:</label>
+  <select id="subject-gender">
+    <option value="男性">男性</option>
+    <option value="女性">女性</option>
+    <option value="その他/無回答">その他/無回答</option>
+  </select>
+  <label>群（独立変数 / IV）:</label>
+  <select id="subject-group">
+    <option value="Control">健常群 (Control)</option>
+    <option value="Patient">疾患群 (Patient)</option>
+  </select>
+
+  <br><br>
+  <button class="action-btn" id="start-btn" onclick="startTest()">テストを開始する (計30試行)</button>
+</div>
+
+<!-- 2. 一対比較テスト画面 -->
+<div id="test-screen" class="card hidden">
+  <h2 id="session-title">テスト1 (30試行)</h2>
+  <p style="font-size: 1.2rem; text-align: center;"><b>どちらか食べられるなら、どちらのお菓子を選びますか？</b></p>
+  <p style="text-align: center;">進捗: <span id="progress-count">1</span> / 30</p>
+  
+  <div class="pair-container">
+    <div class="item-card" id="card-left" onclick="selectWinner(0)">
+      <img id="img-left" src="" alt="お菓子A">
+      <p id="name-left"></p>
+    </div>
+
+    <div class="draw-zone" id="draw-zone-box">
+      <button class="draw-btn" onclick="selectWinner('draw')">🤝<br>引き分け<br>(同等)</button>
+    </div>
+
+    <div class="item-card" id="card-right" onclick="selectWinner(1)">
+      <img id="img-right" src="" alt="お菓子B">
+      <p id="name-right"></p>
+    </div>
+  </div>
+</div>
+
+<!-- 3. 休憩/日またぎ完了 画面 -->
+<div id="rest-screen" class="card hidden" style="text-align: center;">
+  <h2>☕ テスト1 完了</h2>
+  <p>テスト1のデータがブラウザに安全に保存されました。</p>
+  <p>5分後に引き続きテスト2を行うか、後日にテスト2を行う場合は一旦画面を閉じても大丈夫です。</p>
+  <button class="action-btn" onclick="startSession2()">今すぐ テスト2を開始する</button>
+  <button class="action-btn" onclick="resetForNextSubject()">トップ画面に戻る (後日再開)</button>
+</div>
+
+<!-- 4. 結果＆解析画面 -->
+<div id="result-screen" class="card hidden">
+  <h2>🎉 テスト完了結果 ＆ MANOVA投入用データ</h2>
+  <button class="action-btn" onclick="downloadCSV()">全データCSV出力</button>
+  <button class="action-btn" onclick="resetForNextSubject()">次の被験者へ</button>
+
+  <hr>
+
+  <h3>🏆 お菓子 好き嫌い順位 ＆ 順位別平均時間</h3>
+  <div class="flex-grid">
+    <div class="flex-col">
+      <h4>【テスト1 順位と関与平均時間】</h4>
+      <table id="rank-table-1">
+        <thead><tr><th>順位</th><th>お菓子</th><th>スコア</th><th>平均時間(秒)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="flex-col">
+      <h4>【テスト2 順位と関与平均時間】</h4>
+      <table id="rank-table-2">
+        <thead><tr><th>順位</th><th>お菓子</th><th>スコア</th><th>平均時間(秒)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr style="margin-top: 25px;">
+
+  <h3>⏱ 被験者の「真剣度・一貫性」分析</h3>
+  <div id="subject-metrics-box" style="background:#f0f7ff; padding:15px; border-radius:8px;"></div>
+</div>
+
+<!-- 5. 全体保存データ管理テーブル -->
+<div class="card">
+  <h3>📊 端末内保存済み被験者データ一覧 (<span id="total-subjects">0</span>名)</h3>
+  <button class="action-btn" onclick="downloadCSV()">CSVダウンロード</button>
+  <button class="action-btn danger-btn" onclick="clearAllData()">※全データを消去</button>
+  <div style="overflow-x: auto;">
+    <table id="data-table">
+      <thead>
+        <tr>
+          <th>ID</th><th>群</th><th>ステータス</th><th>T1 ζ</th><th>T2 ζ</th><th>順位相関 τ</th>
+          <th>T1 1位時間</th><th>T1 順位勾配 r</th><th>誠実度判定</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const items = [
+  { id: 'A', name: 'ポッキー', src: 'ポッキー.jpg' },
+  { id: 'B', name: 'ポテトチップス', src: 'ポテトチップス.jpg' },
+  { id: 'C', name: 'たけのこの里', src: 'たけのこの里.jpg' },
+  { id: 'D', name: 'きのこの山', src: 'きのこの山.jpg' },
+  { id: 'E', name: 'キャラメルコーン', src: 'キャラメルコーン.jpg' },
+  { id: 'F', name: 'カプリコ', src: 'カプリコ.jpg' }
+];
+
+let currentSubject = {};
+let allowDraw = true;
+let currentSession = 1;
+let currentTrial = 0;
+let pairsList = [];
+let session1Matrix = {}, session2Matrix = {};
+let session1TrialLogs = [], session2TrialLogs = [];
+let trialStartTime = 0;
+let allData = [];
+
+function initApp() {
+  const saved = localStorage.getItem('snack_manova_dataset');
+  if (saved) {
+    allData = JSON.parse(saved);
+  }
+  updateTable();
+}
+
+function saveDataToStorage() {
+  localStorage.setItem('snack_manova_dataset', JSON.stringify(allData));
+  updateTable();
+}
+
+function checkExistingSubject() {
+  const id = document.getElementById('subject-id').value.trim();
+  const notice = document.getElementById('re-test-notice');
+  const btn = document.getElementById('start-btn');
+  
+  const existing = allData.find(d => d.id === id);
+  if (existing) {
+    if (existing.status === 'T1完了') {
+      notice.style.display = 'block';
+      notice.innerText = 'ℹ️ このIDは「テスト1」完了済みです。「テスト2」から始まります。';
+      btn.innerText = 'テスト2 を開始する';
+      document.getElementById('subject-age').value = existing.age;
+      document.getElementById('subject-gender').value = existing.gender;
+      document.getElementById('subject-group').value = existing.group;
+    } else if (existing.status === '全テスト完了') {
+      notice.style.display = 'block';
+      notice.innerText = '⚠️ このIDは既にすべてのテストを完了しています。';
+      btn.innerText = 'テストを上書き再実施する';
+    }
+  } else {
+    notice.style.display = 'none';
+    btn.innerText = 'テストを開始する (計30試行)';
+  }
+}
+
+function generate30Pairs() {
+  let basePairs = [];
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      basePairs.push([items[i], items[j]]);
+    }
+  }
+  let doublePairs = [...basePairs.map(p => [...p]), ...basePairs.map(p => [...p])];
+  let isValid = false, result = [];
+
+  while (!isValid) {
+    result = doublePairs.sort(() => Math.random() - 0.5);
+    isValid = true;
+    for (let k = 0; k < result.length - 1; k++) {
+      let current = result[k].map(x => x.id).sort().join('-');
+      let next = result[k+1].map(x => x.id).sort().join('-');
+      if (current === next) { isValid = false; break; }
+    }
+  }
+  return result;
+}
+
+function startTest() {
+  const id = document.getElementById('subject-id').value.trim();
+  const age = document.getElementById('subject-age').value;
+  if (!id || !age) { alert('ペンネームと年齢を入力してください。'); return; }
+
+  const existing = allData.find(d => d.id === id);
+  allowDraw = document.getElementById('enable-draw').checked;
+
+  if (existing && existing.status === 'T1完了') {
+    // 日またぎのテスト2再開
+    currentSubject = existing;
+    session1Matrix = existing.session1Matrix;
+    session1TrialLogs = existing.session1TrialLogs;
+    startSession2();
+    return;
+  }
+
+  // 新規テスト1の開始
+  currentSubject = {
+    id: id, age: age,
+    gender: document.getElementById('subject-gender').value,
+    group: document.getElementById('subject-group').value,
+    allowDraw: allowDraw ? "あり" : "なし",
+    status: 'T1進行中'
+  };
+
+  if (allowDraw) document.getElementById('draw-zone-box').style.display = 'block';
+  else document.getElementById('draw-zone-box').style.display = 'none';
+
+  currentSession = 1; currentTrial = 0;
+  pairsList = generate30Pairs();
+  session1Matrix = createEmptyMatrix(); session2Matrix = createEmptyMatrix();
+  session1TrialLogs = []; session2TrialLogs = [];
+
+  document.getElementById('setup-screen').classList.add('hidden');
+  document.getElementById('test-screen').classList.remove('hidden');
+  showTrial();
+}
+
+function createEmptyMatrix() {
+  let m = {};
+  items.forEach(i => { m[i.id] = {}; items.forEach(j => m[i.id][j.id] = 0); });
+  return m;
+}
+
+function showTrial() {
+  document.getElementById('session-title').innerText = `テスト${currentSession} (30試行)`;
+  document.getElementById('progress-count').innerText = currentTrial + 1;
+
+  const pair = pairsList[currentTrial];
+  if (Math.random() > 0.5) pair.reverse();
+
+  document.getElementById('img-left').src = pair[0].src;
+  document.getElementById('name-left').innerText = pair[0].name;
+  document.getElementById('img-left').dataset.id = pair[0].id;
+
+  document.getElementById('img-right').src = pair[1].src;
+  document.getElementById('name-right').innerText = pair[1].name;
+  document.getElementById('img-right').dataset.id = pair[1].id;
+
+  trialStartTime = performance.now();
+}
+
+function selectWinner(selectedIndex) {
+  const elapsedTime = (performance.now() - trialStartTime) / 1000;
+  const idLeft = document.getElementById('img-left').dataset.id;
+  const idRight = document.getElementById('img-right').dataset.id;
+  let currentM = currentSession === 1 ? session1Matrix : session2Matrix;
+
+  if (selectedIndex === 'draw') {
+    currentM[idLeft][idRight] += 0.5;
+    currentM[idRight][idLeft] += 0.5;
+  } else {
+    const winnerId = selectedIndex === 0 ? idLeft : idRight;
+    const loserId = selectedIndex === 0 ? idRight : idLeft;
+    currentM[winnerId][loserId] += 1;
+  }
+
+  const log = { itemA: idLeft, itemB: idRight, choice: selectedIndex, time: elapsedTime };
+  if (currentSession === 1) session1TrialLogs.push(log);
+  else session2TrialLogs.push(log);
+
+  currentTrial++;
+  if (currentTrial < pairsList.length) {
+    showTrial();
+  } else {
+    if (currentSession === 1) {
+      // テスト1保存処理
+      const zeta1 = calculateZeta(session1TrialLogs);
+      const rankMetrics1 = getRankedTimeMetrics(session1Matrix, session1TrialLogs);
+      
+      currentSubject.status = 'T1完了';
+      currentSubject.zeta1 = zeta1;
+      currentSubject.session1Matrix = session1Matrix;
+      currentSubject.session1TrialLogs = session1TrialLogs;
+      currentSubject.rankMetrics1 = rankMetrics1;
+
+      // 重複チェックして保存
+      const idx = allData.findIndex(d => d.id === currentSubject.id);
+      if (idx >= 0) allData[idx] = currentSubject;
+      else allData.push(currentSubject);
+
+      saveDataToStorage();
+
+      document.getElementById('test-screen').classList.add('hidden');
+      document.getElementById('rest-screen').classList.remove('hidden');
+    } else {
+      finishSubject();
+    }
+  }
+}
+
+function startSession2() {
+  currentSession = 2; currentTrial = 0; pairsList = generate30Pairs();
+  session2Matrix = createEmptyMatrix(); session2TrialLogs = [];
+  
+  if (currentSubject.allowDraw === "あり") document.getElementById('draw-zone-box').style.display = 'block';
+  else document.getElementById('draw-zone-box').style.display = 'none';
+
+  document.getElementById('setup-screen').classList.add('hidden');
+  document.getElementById('rest-screen').classList.add('hidden');
+  document.getElementById('test-screen').classList.remove('hidden');
+  showTrial();
+}
+
+function calculateZeta(trialLogs) {
+  let pairResults = {};
+  trialLogs.forEach(log => {
+    let pairKey = [log.itemA, log.itemB].sort().join('-');
+    if (!pairResults[pairKey]) pairResults[pairKey] = [];
+    let winner = log.choice === 'draw' ? 'draw' : (log.choice === 0 ? log.itemA : log.itemB);
+    pairResults[pairKey].push(winner);
+  });
+
+  let intraConsistencySum = 0, pairCount = 0;
+  for (let key in pairResults) {
+    let choices = pairResults[key];
+    if (choices.length === 2) {
+      pairCount++;
+      if (choices[0] === choices[1]) intraConsistencySum += 1.0;
+      else if (choices[0] === 'draw' || choices[1] === 'draw') intraConsistencySum += 0.5;
+      else intraConsistencySum += 0.0;
+    }
+  }
+  return pairCount > 0 ? (intraConsistencySum / pairCount).toFixed(3) : "1.000";
+}
+
+function calculateKendallTau(m1, m2) {
+  let scores1 = items.map(item => { let s=0; items.forEach(o=> s+=m1[item.id][o.id]); return s; });
+  let scores2 = items.map(item => { let s=0; items.forEach(o=> s+=m2[item.id][o.id]); return s; });
+  let concordant = 0, discordant = 0, tie1 = 0, tie2 = 0;
+  const n = items.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      let diff1 = scores1[i] - scores1[j];
+      let diff2 = scores2[i] - scores2[j];
+      if (diff1 * diff2 > 0) concordant++;
+      else if (diff1 * diff2 < 0) discordant++;
+      else { if (diff1 === 0) tie1++; if (diff2 === 0) tie2++; }
+    }
+  }
+  let denom = Math.sqrt((concordant + discordant + tie1) * (concordant + discordant + tie2));
+  return denom === 0 ? "1.000" : ((concordant - discordant) / denom).toFixed(3);
+}
+
+function getRankedTimeMetrics(matrix, trialLogs) {
+  let itemScores = items.map(item => {
+    let score = 0;
+    items.forEach(other => { score += matrix[item.id][other.id]; });
+    return { id: item.id, name: item.name, score: score };
+  });
+  itemScores.sort((a, b) => b.score - a.score);
+
+  let itemTimes = {};
+  items.forEach(item => {
+    let logs = trialLogs.filter(l => l.itemA === item.id || l.itemB === item.id);
+    let avg = logs.length > 0 ? logs.reduce((sum, l) => sum + l.time, 0) / logs.length : 0;
+    itemTimes[item.id] = avg;
+  });
+
+  return itemScores.map((item, idx) => ({
+    rank: idx + 1, id: item.id, name: item.name, score: item.score, avgTime: itemTimes[item.id].toFixed(2)
+  }));
+}
+
+function evaluateSincerity(rankMetrics, trialLogs) {
+  let times = rankMetrics.map(r => parseFloat(r.avgTime));
+  let ranks = [1, 2, 3, 4, 5, 6];
+  let meanR = 3.5, meanT = times.reduce((a,b)=>a+b,0) / 6;
+
+  let num = 0, denR = 0, denT = 0;
+  for(let i=0; i<6; i++) {
+    let dR = ranks[i] - meanR, dT = times[i] - meanT;
+    num += dR * dT; denR += dR * dR; denT += dT * dT;
+  }
+  let corr = (denR * denT === 0) ? 0 : num / Math.sqrt(denR * denT);
+
+  let allTimes = trialLogs.map(l => l.time);
+  let meanAll = allTimes.reduce((a,b)=>a+b,0) / allTimes.length;
+  let variance = allTimes.reduce((a,b)=>a + Math.pow(b - meanAll, 2), 0) / allTimes.length;
+  let stdDev = Math.sqrt(variance);
+
+  let isLazy = false, reason = [];
+  if (Math.abs(corr) < 0.25) { isLazy = true; reason.push("順位ごとの時間に傾きなし"); }
+  if (stdDev < 0.2) { isLazy = true; reason.push("回答速度が一定（連打疑い）"); }
+
+  return {
+    status: isLazy ? "⚠️ 適当回答の疑いアリ" : "✅ 誠実な回答傾向",
+    corr: corr.toFixed(3), stdDev: stdDev.toFixed(2), reason: reason.join(" / ")
+  };
+}
+
+function finishSubject() {
+  document.getElementById('test-screen').classList.add('hidden');
+  document.getElementById('result-screen').classList.remove('hidden');
+
+  const zeta2 = calculateZeta(session2TrialLogs);
+  const tau = calculateKendallTau(session1Matrix, session2Matrix);
+
+  const rankMetrics1 = currentSubject.rankMetrics1;
+  const rankMetrics2 = getRankedTimeMetrics(session2Matrix, session2TrialLogs);
+  const sincerity = evaluateSincerity(rankMetrics1, session1TrialLogs);
+
+  renderRankTable('rank-table-1', rankMetrics1);
+  renderRankTable('rank-table-2', rankMetrics2);
+
+  document.getElementById('subject-metrics-box').innerHTML = `
+    <p><b>ID: ${currentSubject.id} (${currentSubject.group}) の分析結果</b></p>
+    <ul>
+      <li><b>一貫性 (ζ):</b> テスト1 = <b>${currentSubject.zeta1}</b> / テスト2 = <b>${zeta2}</b></li>
+      <li><b>再検査信頼性 (ケンドール τ):</b> ${tau}</li>
+      <li><b>順位別反応時間の傾き相関 (r):</b> ${sincerity.corr}</li>
+      <li><b>回答誠実度 判定結果:</b> <b style="${sincerity.status.includes('⚠️') ? 'color:red;' : 'color:green;'}">${sincerity.status}</b></li>
+    </ul>
+  `;
+
+  // 保存用オブジェクトの作成
+  const finalSubject = {
+    ...currentSubject,
+    status: '全テスト完了',
+    zeta2: zeta2,
+    tau: tau,
+    t1_rank1_time: rankMetrics1[0].avgTime,
+    t1_rank6_time: rankMetrics1[5].avgTime,
+    sincerity_corr: sincerity.corr,
+    sincerityStatus: sincerity.status
+  };
+
+  const idx = allData.findIndex(d => d.id === currentSubject.id);
+  if (idx >= 0) allData[idx] = finalSubject;
+  else allData.push(finalSubject);
+
+  saveDataToStorage();
+}
+
+function renderRankTable(tableId, ranks) {
+  const tbody = document.querySelector(`#${tableId} tbody`);
+  tbody.innerHTML = '';
+  ranks.forEach((r) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="rank-badge">${r.rank}位</td><td>${r.name}</td><td>${r.score} 点</td><td>${r.avgTime} s</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function updateTable() {
+  const tbody = document.querySelector('#data-table tbody');
+  tbody.innerHTML = '';
+  document.getElementById('total-subjects').innerText = allData.length;
+
+  allData.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.id}</td><td>${d.group}</td>
+      <td><b style="${d.status === '全テスト完了' ? 'color:green;' : 'color:orange;'}">${d.status}</b></td>
+      <td><b>${d.zeta1 || '-'}</b></td><td><b>${d.zeta2 || '-'}</b></td><td>${d.tau || '-'}</td>
+      <td>${d.t1_rank1_time || '-'} s</td><td>${d.sincerity_corr || '-'}</td>
+      <td><b>${d.sincerityStatus || '未完'}</b></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function downloadCSV() {
+  if (allData.length === 0) { alert('出力するデータがありません。'); return; }
+  let csvContent = "data:text/csv;charset=utf-8,ID,Age,Gender,Group,Status,Zeta_T1,Zeta_T2,Kendall_Tau,T1_Rank1_Time(s),T1_Rank6_Time(s),Sincerity_Corr_R,Sincerity_Status\n";
+  allData.forEach(d => {
+    csvContent += `${d.id},${d.age},${d.gender},${d.group},${d.status},${d.zeta1||''},${d.zeta2||''},${d.tau||''},${d.t1_rank1_time||''},${d.t1_rank6_time||''},${d.sincerity_corr||''},${d.sincerityStatus||''}\n`;
+  });
+  const encodedUri = encodeURI(csvContent);
+  const link = document.body.appendChild(document.createElement("a"));
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", "snack_manova_persistent_dataset.csv");
+  link.click();
+  document.body.removeChild(link);
+}
+
+function clearAllData() {
+  if (confirm('保存されている全被験者データを消去しますか？（※復元できません）')) {
+    localStorage.removeItem('snack_manova_dataset');
+    allData = [];
+    updateTable();
+  }
+}
+
+function resetForNextSubject() {
+  document.getElementById('subject-id').value = '';
+  document.getElementById('subject-age').value = '';
+  document.getElementById('re-test-notice').style.display = 'none';
+  document.getElementById('start-btn').innerText = 'テストを開始する (計30試行)';
+  document.getElementById('result-screen').classList.add('hidden');
+  document.getElementById('rest-screen').classList.add('hidden');
+  document.getElementById('setup-screen').classList.remove('hidden');
+}
+</script>
+</body>
+</html>
