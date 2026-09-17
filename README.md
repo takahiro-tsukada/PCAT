@@ -1,7 +1,6 @@
 # Preference and Consistency Assessment Tool (PCAT)
 
 [![DOI](https://zenodo.org/badge/1374554834.svg)](https://doi.org/10.5281/zenodo.22815301)
-
 ## Overview
 PCAT is a browser-based experimental framework designed for psychiatric, clinical psychological, and behavioral research. It quantifies subjects' preference stability, choice consistency, and cognitive friction when evaluating visual or physical stimuli (e.g., snacks, facial expressions, or option choices).
 
